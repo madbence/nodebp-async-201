@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Async Patterns in Node.JS</title>
+    <meta name="description" content="Async program flow in node, with streams, promises, generators">
+    <meta name="author" content="Bence Dányi">
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="css/reveal.min.css">
+    <link rel="stylesheet" href="css/theme/default.css" id="theme">
+    <style>
+      code { color: #bbb; }
+      pre { font-size: 100% !important; }
+      .reveal pre code {
+        max-height: none;
+      }
+    </style>
+    </style>
+    <!-- For syntax highlighting -->
+    <link rel="stylesheet" href="lib/css/zenburn.css">
+    <!-- If the query includes 'print-pdf', use the PDF print sheet -->
+    <script>
+      document.write( '<link rel="stylesheet" href="css/print/' + ( window.location.search.match( /print-pdf/gi ) ? 'pdf' : 'paper' ) + '.css" type="text/css" media="print">' );
+    </script>
+    <!--[if lt IE 9]>
+    <script src="lib/js/html5shiv.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h1>Async 201</h1>
+          <footer>@madbence</footer>
+        </section>
+        <section>
+          <h1>Topics</h1>
+          <ol>
+            <li>Streams</li>
+            <li>Promises</li>
+            <li>Generators</li>
+          </ol>
+        </section>
+        <section>
+          <section>
+            <h1>Streams</h1>
+            <img src="assets/zero-gravity.gif" />
+          </section>
+          <section>
+            <h2>What are they?</h2>
+            <ul>
+              <li>Working with <code>String</code> and <code>Buffer</code> (<code>objectMode</code> available)</li>
+              <li>Processing HUGE amount of data on-the-fly</li>
+              <li>Pipes&amp;Filters model</li>
+            </ul>
+          </section>
+        </section>
+        <section>
+          <h1>Types</h1>
+          <ul>
+            <li>Readable</li>
+            <li>Writable</li>
+            <li>Duplex</li>
+            <li>Transform</li>
+          </ul>
+        </section>
+        <section>
+          <section>
+            <h1>Under the hood</h1>
+            <img src="assets/under-the-hood.jpg" />
+          </section>
+          <section>
+            <h2>Event emitter</h2>
+            <ul>
+              <li>Observer pattern</li>
+              <li><code>.on('name', fn)</code></li>
+              <li><code>.emit('name'[, arg1, ...])</code></li>
+            </ul>
+          </section>
+          <section>
+            <h2>Event emitter leaks</h2>
+            <img src="assets/memory-leak.gif" />
+          </section>
+          <section>
+            <h2>Event emitter leaks</h2>
+            <ul>
+              <li>Technically not a leak. But it is.</li>
+              <li>Clean up after yourself!</li>
+              <li><code>.once()</code>, if possible</li>
+            </ul>
+          </section>
+          <section>
+            <h2>Backpressure</h2>
+            <ul>
+              <li>Slow writable vs fast readable</li>
+            </ul>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>For consumers</h1>
+            Flowing vs non-flowing mode
+          </section>
+          <section>
+            <h2>Reading</h2>
+            <ul>
+              <li><code>'data'</code> event (flowing mode)</li>
+              <li><code>.read(bytes)</code> (non-flowing mode)</li>
+            </ul>
+            <p>
+              (Switch between modes with <code>.pause()</code> and <code>.resume())</code>
+            </p>
+            <h2>Writing</h2>
+            <ul>
+              <li><code>.write(chunk, [enc], [cb])</code></li>
+              <li><code>.end([chunk], [enc], [cb])</code></li>
+            </ul>
+          </section>
+          <section>
+            <h2>Pipes!</h2>
+            <ul>
+              <li><code>$ cat in.txt | compress | encrypt &gt; out.txt</code></li>
+              <li><pre><code class="javascript">fsReadStream
+  .pipe(compress)
+  .pipe(encrypt)
+  .pipe(fsWriteStream);</code></pre></li>
+            </ul>
+            <p>
+              Complex example: <a href="http://ejohn.org/blog/node-js-stream-playground/">Stream Playground</a>
+            </p>
+            <p>
+              An entire build system built on pipes: <a href="https://github.com/gulpjs/gulp">Gulp</a>
+            </p>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>For implementors</h1>
+            <ul>
+              <li><code>._read(bytes)</code> for readable, <code>.push(chunk)</code> to the internal buffer</li>
+              <li><code>._write(chunk, enc, cb)</code> for writable</li>
+              <li><code>._transform(chunk, enc, cb)</code> for transform</li>
+            </ul>
+          </section>
+          <section>
+            <h2>Example transform stream</h2>
+            <pre><code class="javascript">
+var f = function(chunk, enc, cb) {
+   var string = chunk.toString();
+   var upper = string.toUpperCase();
+  this.push(upper, enc);
+  cb();
+};
+MyTransform.prototype._transform = f;</code></pre>
+          </section>
+        </section>
+        <section>
+          <h1>Promises</h1>
+          <img src="assets/promise.gif" />
+        </section>
+        <section>
+          <section>
+            <h1>WTF?</h1>
+            <ul>
+              <li>They represent the result of a pending operation (<code>Deferred</code> object)</li>
+              <li>They were part of node a while back ago</li>
+              <li>They are part of ES6</li>
+              <li>It's a standard! (<a href="http://promisesaplus.com/">Promises/A+</a>)</li>
+              <li>jQuery has a broken implementation :(</li>
+              <li class="fragment">I don't like them! :(</li>
+            </ul>
+          </section>
+          <section>
+            <h2>In a nutshell</h2>
+            <pre><code class="javascript">function sleep(ms) {
+  var d = Q.defer();
+  setTimeout(function() {
+    d.resolve();
+  }, ms);
+  return d.promise;
+}
+sleep(1337).then(function() {
+ console.log('done! :3');
+});</code></pre>
+            <h3 class="fragment">
+              But that's not magic! :(
+            </h3>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>The Magic</h1>
+            <h2>Chaining!</h2>
+            <pre style="float: left; width: 48%"><code class="javascript">a1().then(function(val) {
+  return a2(val);
+}).then(function(val) {
+  return a3(val);
+}).then(function(val) {
+  console.log('done!');
+}, function(err) {
+  console.log('err!');
+});</code></pre>
+            <pre style="float: right; width: 48%"><code class="javascript">try {
+  var v = a1();
+  v = a2(v);
+  v = a3(v);
+  console.log('done!');
+} catch(e) {
+  console.log('err!');
+}</code></pre>
+          </section>
+          <section>
+            <ul>
+              <li><em>Callback-Hell</em> avoided!</li>
+              <li>Errors propagate</li>
+              <li>Libraries (<a href="https://github.com/kriskowal/q">Q</a>, etc) can provide stack-trace &amp; basic control flow (forks/join, etc)!</li>
+            </ul>
+            <h3 class="fragment">
+              Too much boilerplate code :(
+            </h3>
+          </section>
+        </section>
+        <section>
+          <h1>Generators</h1>
+          <img src="assets/es6.jpg" />
+        </section>
+        <section>
+          <h3>Since v0.11.3</h3>
+          <p>with <code>--harmony</code> flags (or use <a href="https://github.com/TooTallNate/gnode">gnode</a>)</p>
+          <pre><code>function* range(a, b) {
+  while(a &lt; b) {
+    yield a++;
+  }
+}
+
+for(let i of range(2, 8)) {
+  console.log(i); //2, 3, 4, 5, 6, 7
+}</code></pre>
+          <p>Use <code>yield</code> to suspend execution, <code>.next()</code> to continue</p>
+        </section>
+        <section>
+          <section>
+            <h2>The idea</h2>
+            <pre><code>magic(function* (resume) {
+  try {
+    var result = yield fs
+      .readFile('./existing.file', resume);
+    console.log(result);
+    var result2 = yield fs
+      .readFile('./missing.file', resume);
+  } catch(e) {
+    console.error(e);
+  }
+});</code></pre>
+          </section>
+          <section>
+            <h2>The magic</h2>
+            <h4>simplified version of <a href="https://github.com/madbence/node-genzen">genzen</a> (my library)</h4>
+            <pre><code>function magic(f) {
+  var g = f(function(err, result) {
+    if(err) {
+      return g.throw(err);
+    }
+    g.next(result);
+  });
+  g.next();
+}</code></pre>
+            <p>Use a robust library, like <a href="https://github.com/visionmedia/co">co</a>, <a href="https://github.com/bjouhier/galaxy">galaxy</a>, <a href="https://github.com/jmar777/suspend">suspend</a>, etc. They work with promises, can do basic control flow, etc...</p>
+          </section>
+        </section>
+        <section>
+          <h2>Koa</h2>
+          <h3 style="text-transform: none">yield express();</h3>
+          <p>
+            The next version of express.js
+          </p>
+          <ul>
+            <li>generator based middlewares</li>
+            <li>no built-in features, DIY</li>
+          </ul>
+        </section>
+        <section>
+          <h1>Thank you!</h2>
+          <h2>Questions?</h2>
+        </section>
+      </div>
+    </div>
+    <script src="lib/js/head.min.js"></script>
+    <script src="js/reveal.min.js"></script>
+    <script>
+      // Full list of configuration options available here:
+      // https://github.com/hakimel/reveal.js#configuration
+      Reveal.initialize({
+        controls: true,
+        progress: true,
+        history: true,
+        center: true,
+
+        theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+        transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+        // Parallax scrolling
+        // parallaxBackgroundImage: 'https://s3.amazonaws.com/hakim-static/reveal-js/reveal-parallax-1.jpg',
+        // parallaxBackgroundSize: '2100px 900px',
+
+        // Optional libraries used to extend on reveal.js
+        dependencies: [
+          { src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+          { src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+          { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+          { src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+          { src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+          { src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+        ]
+      });
+    </script>
+  </body>
+</html>
